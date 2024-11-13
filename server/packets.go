@@ -33,11 +33,13 @@ const (
 
 type ReadRequest struct {
 	FileName string // name of the file to read
-	Mode     string // "netascii", "octet", "mail"
+	Mode     string // "netascii", "octet"
 }
 
 func (r *ReadRequest) UnmarshalBinary(data []byte) error { return nil }
 func (r ReadRequest) MarshalBinary() ([]byte, error)     { return nil, nil }
+func (r *ReadRequest) UmarshalNetascii() ([]byte, error) { return nil, nil }
+func (r ReadRequest) MarshalNetascii() ([]byte, error)   { return nil, nil }
 
 type WriteRequest struct {
 	FileName string // name of the file to write
@@ -46,6 +48,8 @@ type WriteRequest struct {
 
 func (w *WriteRequest) UnmarshalBinary(data []byte) error { return nil }
 func (w WriteRequest) MarshalBinary() ([]byte, error)     { return nil, nil }
+func (w *WriteRequest) UmarshalNetascii() ([]byte, error) { return nil, nil }
+func (w WriteRequest) MarshalNetascii() ([]byte, error)   { return nil, nil }
 
 type Data struct {
 	BlockNumber uint16    // block number of the data packet
@@ -54,6 +58,8 @@ type Data struct {
 
 func (d *Data) UnmarshalBinary(data []byte) error { return nil }
 func (d Data) MarshalBinary() ([]byte, error)     { return nil, nil }
+func (d *Data) UmarshalNetascii() ([]byte, error) { return nil, nil }
+func (d Data) MarshalNetascii() ([]byte, error)   { return nil, nil }
 
 type Ack struct {
 	BlockNumber uint16 // block number of the data packet
@@ -61,6 +67,8 @@ type Ack struct {
 
 func (a *Ack) UnmarshalBinary(data []byte) error { return nil }
 func (a Ack) MarshalBinary() ([]byte, error)     { return nil, nil }
+func (a *Ack) UmarshalNetascii() ([]byte, error) { return nil, nil }
+func (a Ack) MarshalNetascii() ([]byte, error)   { return nil, nil }
 
 type Error struct {
 	ErrCode ErrCode // error code
