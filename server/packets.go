@@ -113,8 +113,95 @@ func (r ReadRequest) MarshalBinary() ([]byte, error) {
 	return buf.Bytes(), nil
 
 }
-func (r *ReadRequest) UmarshalNetascii() ([]byte, error) { return nil, nil }
-func (r ReadRequest) MarshalNetascii() ([]byte, error)   { return nil, nil }
+func (r *ReadRequest) UmarshalNetascii(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	var code OpCode
+
+	err := binary.Write(buf, binary.BigEndian, &code)
+	if err != nil {
+		return errors.New("Invalid opcode")
+	}
+
+	if code != PRQ {
+		return errors.New("Invalid PRQ")
+	}
+
+	netAsciiFileName, err := buf.ReadBytes(0)
+	if err != nil {
+		return errors.New("Invalid filename")
+	}
+
+	// Remove the null terminator
+	if len(netAsciiFileName) > 0 {
+		netAsciiFileName = netAsciiFileName[:len(netAsciiFileName)-1]
+	}
+
+	r.FileName, err = decodeNetAscii(netAsciiFileName)
+	if err != nil {
+		return errors.New("Invalid filename")
+	}
+
+	netAsciiMode, err := buf.ReadBytes(0)
+	if err != nil {
+		return errors.New("Invalid mode")
+	}
+
+	// Remove the null terminator
+	if len(netAsciiMode) > 0 {
+		netAsciiMode = netAsciiMode[:len(netAsciiMode)-1]
+	}
+
+	r.Mode, err = decodeNetAscii(netAsciiMode)
+	if err != nil {
+		return errors.New("Invalid mode")
+	}
+
+	return nil
+}
+
+func (r ReadRequest) MarshalNetascii() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	cap := 2 + 2 + len(r.FileName) + 1 + len(r.Mode) + 1
+	buf.Grow(cap)
+	const code = PRQ
+
+	err := binary.Write(buf, binary.BigEndian, code)
+	if err != nil {
+		return nil, err
+	}
+
+	netAsciiFileName, err := encodeNetAscii(r.FileName)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buf, binary.BigEndian, netAsciiFileName)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buf, binary.BigEndian, []byte{0})
+	if err != nil {
+		return nil, err
+	}
+
+	netAsciiMode, err := encodeNetAscii(r.Mode)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buf, binary.BigEndian, netAsciiMode)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buf, binary.BigEndian, []byte{0})
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
 
 // WRITE REQUEST PACKET
 type WriteRequest struct {
@@ -130,7 +217,7 @@ func (w *WriteRequest) UnmarshalBinary(data []byte) error {
 		return errors.New("Invalid opcode")
 	}
 
-	if code != PRQ {
+	if code != WRQ {
 		return errors.New("Invalid PRQ or WRQ")
 	}
 
@@ -150,7 +237,7 @@ func (w *WriteRequest) UnmarshalBinary(data []byte) error {
 	}
 
 	w.Mode = strings.TrimRight(w.Mode, "\x00")
-	if w.Mode != NETASCII && w.Mode != OCTET {
+	if w.Mode != OCTET {
 		return errors.New("Invalid mode")
 	}
 
@@ -167,11 +254,12 @@ func (w WriteRequest) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
 	buf.Grow(cap)
 
-	var code OpCode = PRQ
+	var code OpCode = WRQ
 	err := binary.Write(buf, binary.BigEndian, code)
 	if err != nil {
 		return nil, err
 	}
+
 	err = binary.Write(buf, binary.BigEndian, []byte(w.FileName))
 	if err != nil {
 		return nil, err
@@ -187,10 +275,104 @@ func (w WriteRequest) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
+	err = binary.Write(buf, binary.BigEndian, []byte{0})
+	if err != nil {
+		return nil, err
+	}
+
 	return buf.Bytes(), nil
 }
-func (w *WriteRequest) UmarshalNetascii() ([]byte, error) { return nil, nil }
-func (w WriteRequest) MarshalNetascii() ([]byte, error)   { return nil, nil }
+func (w *WriteRequest) UmarshalNetascii(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	var code OpCode
+
+	err := binary.Read(buf, binary.BigEndian, &code)
+	if err != nil {
+		return errors.New("Invalid opcode")
+	}
+
+	if code != WRQ {
+		return errors.New("Invalid WRQ")
+	}
+
+	netAsciiFileName, err := buf.ReadBytes(0)
+	if err != nil {
+		return errors.New("Invalid filename")
+	}
+	// Remove the null terminator
+	if len(netAsciiFileName) > 0 {
+		netAsciiFileName = netAsciiFileName[:len(netAsciiFileName)-1]
+	}
+
+	w.FileName, err = decodeNetAscii(netAsciiFileName)
+	if err != nil {
+		return errors.New("Invalid filename")
+	}
+
+	netAsciiMode, err := buf.ReadBytes(0)
+	if err != nil {
+		return errors.New("Invalid mode")
+	}
+
+	// Remove the null terminator
+	if len(netAsciiMode) > 0 {
+		netAsciiMode = netAsciiMode[:len(netAsciiMode)-1]
+	}
+
+	w.Mode, err = decodeNetAscii(netAsciiMode)
+	if err != nil {
+		return errors.New("Invalid mode")
+	}
+
+	if w.Mode != NETASCII {
+		return errors.New("Invalid mode")
+	}
+
+	return nil
+}
+func (w WriteRequest) MarshalNetascii() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	cap := 2 + 2 + len(w.FileName) + 1 + len(w.Mode) + 1
+	buf.Grow(cap)
+	const code = WRQ
+
+	err := binary.Write(buf, binary.BigEndian, code)
+	if err != nil {
+		return nil, err
+	}
+
+	netAsciiFileName, err := encodeNetAscii(w.FileName)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buf, binary.BigEndian, netAsciiFileName)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buf, binary.BigEndian, []byte{0})
+	if err != nil {
+		return nil, err
+	}
+
+	netAsciiMode, err := encodeNetAscii(w.Mode)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buf, binary.BigEndian, netAsciiMode)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buf, binary.BigEndian, []byte{0})
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
 
 // DATA PACKET
 type Data struct {
@@ -249,8 +431,6 @@ func (d Data) MarshalBinary() ([]byte, error) {
 	return buf.Bytes(), nil
 
 }
-func (d *Data) UmarshalNetascii() ([]byte, error) { return nil, nil }
-func (d Data) MarshalNetascii() ([]byte, error)   { return nil, nil }
 
 // ACK PACKET
 type Ack struct {
@@ -301,10 +481,6 @@ func (a Ack) MarshalBinary() ([]byte, error) {
 
 	return buf.Bytes(), nil
 }
-
-func (a *Ack) UmarshalNetascii() ([]byte, error) { return nil, nil }
-
-func (a Ack) MarshalNetascii() ([]byte, error) { return nil, nil }
 
 // ERROR PACKET
 type Error struct {
@@ -421,6 +597,7 @@ func (e Error) MarshalNetascii() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	err = binary.Write(buf, binary.BigEndian, netasciiData)
 	if err != nil {
 		return nil, err
