@@ -366,5 +366,65 @@ func (e Error) MarshalBinary() ([]byte, error) {
 
 	return buf.Bytes(), nil
 }
-func (e *Error) UmarshalNetascii() ([]byte, error) { return nil, nil }
-func (e Error) MarshalNetascii() ([]byte, error)   { return nil, nil }
+func (e *Error) UmarshalNetascii(data []byte) error {
+	buf := bytes.NewBuffer(data)
+	var code OpCode
+
+	err := binary.Read(buf, binary.BigEndian, &code)
+	if err != nil {
+		return errors.New("Invalid opcode")
+	}
+
+	if code != ERROR {
+		return errors.New("Invalid error packet")
+	}
+	err = binary.Read(buf, binary.BigEndian, &e.ErrCode)
+	if err != nil {
+		return errors.New("Invalid error code")
+	}
+
+	netasciiData, err := buf.ReadBytes(0)
+	if err != nil {
+		return errors.New("Invalid error message")
+	}
+
+	// Remove the null terminator
+	if len(netasciiData) > 0 {
+		netasciiData = netasciiData[:len(netasciiData)-1]
+	}
+
+	e.Message, err = decodeNetAscii(netasciiData)
+	if err != nil {
+		return errors.New("Invalid error message")
+	}
+
+	return nil
+}
+
+func (e Error) MarshalNetascii() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	cap := 2 + 2 + len(e.Message) + 1
+	buf.Grow(cap)
+	const code = ERROR
+
+	err := binary.Write(buf, binary.BigEndian, code)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buf, binary.BigEndian, e.ErrCode)
+	if err != nil {
+		return nil, err
+	}
+
+	netasciiData, err := encodeNetAscii(e.Message)
+	if err != nil {
+		return nil, err
+	}
+	err = binary.Write(buf, binary.BigEndian, netasciiData)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
