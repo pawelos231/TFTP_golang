@@ -39,10 +39,18 @@ const (
 	ErrNoUser                         // No such user.
 )
 
+type Request interface {
+	RequestType() string
+}
+
 // READ REQUEST PACKET
 type ReadRequest struct {
 	FileName string // name of the file to read
 	Mode     string // "netascii", "octet"
+}
+
+func (r ReadRequest) RequestType() string {
+	return "read"
 }
 
 func (r *ReadRequest) UnmarshalBinary(data []byte) error {
@@ -207,6 +215,10 @@ func (r ReadRequest) MarshalNetascii() ([]byte, error) {
 type WriteRequest struct {
 	FileName string // name of the file to write
 	Mode     string // "netascii", "octet"
+}
+
+func (w WriteRequest) RequestType() string {
+	return "write"
 }
 
 func (w *WriteRequest) UnmarshalBinary(data []byte) error {
