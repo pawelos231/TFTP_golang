@@ -1,4 +1,4 @@
-package server
+package packets
 
 import (
 	"bytes"
@@ -16,6 +16,7 @@ const (
 )
 
 type OpCode uint16
+type Compress bool 
 
 // types of packets (opcodes) that can be sent
 const (
@@ -40,13 +41,16 @@ const (
 )
 
 type Request interface {
-	RequestType() string
+    RequestType() string
+    MarshalBinary() ([]byte, error)
+    MarshalNetascii() ([]byte, error)
 }
 
 // READ REQUEST PACKET
 type ReadRequest struct {
 	FileName string // name of the file to read
 	Mode     string // "netascii", "octet"
+	Compress bool   // compress the file (that is a twist in the protocol)
 }
 
 func (r ReadRequest) RequestType() string {
@@ -56,13 +60,24 @@ func (r ReadRequest) RequestType() string {
 func (r *ReadRequest) UnmarshalBinary(data []byte) error {
 	buf := bytes.NewBuffer(data)
 	var code OpCode
+	var compress Compress
+
+
+	//read opcode
 	err := binary.Read(buf, binary.BigEndian, &code)
 	if err != nil {
 		return errors.New("Invalid opcode")
 	}
 
+
 	if code != PRQ {
-		return errors.New("Invalid PRQ or WRQ")
+		return errors.New("Invalid PRQ ")
+	}
+
+	//read compress, see how the packet is structured in the README
+	err = binary.Read(buf, binary.BigEndian, &compress)
+	if err != nil {
+		return errors.New("Invalid compress")
 	}
 
 	r.FileName, err = buf.ReadString(0)
@@ -75,6 +90,8 @@ func (r *ReadRequest) UnmarshalBinary(data []byte) error {
 		return errors.New("Invalid filename")
 	}
 
+
+
 	r.Mode, err = buf.ReadString(0)
 	if err != nil {
 		return errors.New("Invalid PRQ")
@@ -85,16 +102,22 @@ func (r *ReadRequest) UnmarshalBinary(data []byte) error {
 		return errors.New("Invalid mode")
 	}
 
+
 	return nil
 }
 
 func (r ReadRequest) MarshalBinary() ([]byte, error) {
 	mode := "octet"
+	compress := false
 	if r.Mode != "" {
 		mode = r.Mode
 	}
 
-	cap := 2 + 2 + len(r.FileName) + 1 + len(mode) + 1
+	if r.Compress {
+		compress = r.Compress
+	}
+
+	cap := 2 + 1 + 2 + len(r.FileName) + 1 + len(mode) + 1
 	buf := new(bytes.Buffer)
 	buf.Grow(cap)
 
@@ -103,6 +126,20 @@ func (r ReadRequest) MarshalBinary() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
+
+	var compressByte byte
+	if compress {
+		compressByte = 1
+	} else {
+		compressByte = 0
+	}
+	err = binary.Write(buf, binary.BigEndian, compressByte)
+
+	if err != nil {
+		return nil, err
+	}
+
 	err = binary.Write(buf, binary.BigEndian, []byte(r.FileName))
 	if err != nil {
 		return nil, err
@@ -118,16 +155,25 @@ func (r ReadRequest) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
+
 	return buf.Bytes(), nil
 
 }
-func (r *ReadRequest) UmarshalNetascii(data []byte) error {
+func (r *ReadRequest) UnmarshalNetascii(data []byte) error {
 	buf := bytes.NewBuffer(data)
 	var code OpCode
+	var compress Compress
 
-	err := binary.Write(buf, binary.BigEndian, &code)
+	//read opcode
+	err := binary.Read(buf, binary.BigEndian, &code)
 	if err != nil {
 		return errors.New("Invalid opcode")
+	}
+
+	//read compress
+	err = binary.Read(buf, binary.BigEndian, &compress)
+	if err != nil {
+		return errors.New("Invalid compress")
 	}
 
 	if code != PRQ {
@@ -215,6 +261,7 @@ func (r ReadRequest) MarshalNetascii() ([]byte, error) {
 type WriteRequest struct {
 	FileName string // name of the file to write
 	Mode     string // "netascii", "octet"
+	Compress bool   // compress the file (that is a twist in the protocol)
 }
 
 func (w WriteRequest) RequestType() string {
@@ -224,9 +271,18 @@ func (w WriteRequest) RequestType() string {
 func (w *WriteRequest) UnmarshalBinary(data []byte) error {
 	buf := bytes.NewBuffer(data)
 	var code OpCode
+	var compress Compress
+
+	//read opcode
 	err := binary.Read(buf, binary.BigEndian, &code)
 	if err != nil {
 		return errors.New("Invalid opcode")
+	}
+
+	//read compress
+	err = binary.Read(buf, binary.BigEndian, &compress)
+	if err != nil {
+		return errors.New("Invalid compress")
 	}
 
 	if code != WRQ {
@@ -294,13 +350,22 @@ func (w WriteRequest) MarshalBinary() ([]byte, error) {
 
 	return buf.Bytes(), nil
 }
-func (w *WriteRequest) UmarshalNetascii(data []byte) error {
+
+func (w *WriteRequest) UnmarshalNetascii(data []byte) error {
 	buf := bytes.NewBuffer(data)
 	var code OpCode
+	var compress Compress
 
+	//read opcode
 	err := binary.Read(buf, binary.BigEndian, &code)
 	if err != nil {
 		return errors.New("Invalid opcode")
+	}
+
+	//read compress
+	err = binary.Read(buf, binary.BigEndian, &compress)
+	if err != nil {
+		return errors.New("Invalid compress")
 	}
 
 	if code != WRQ {
@@ -342,6 +407,7 @@ func (w *WriteRequest) UmarshalNetascii(data []byte) error {
 
 	return nil
 }
+
 func (w WriteRequest) MarshalNetascii() ([]byte, error) {
 	buf := new(bytes.Buffer)
 	cap := 2 + 2 + len(w.FileName) + 1 + len(w.Mode) + 1
@@ -424,7 +490,7 @@ func (d Data) MarshalBinary() ([]byte, error) {
 	cap := 2 + 2 + DatagramSize
 	buf.Grow(cap)
 
-	var code OpCode = PRQ
+	var code OpCode = DATA
 	err := binary.Write(buf, binary.BigEndian, code)
 	if err != nil {
 		return nil, err
@@ -450,11 +516,6 @@ type Ack struct {
 }
 
 func (a *Ack) UnmarshalBinary(data []byte) error {
-	len := len(data)
-	if len != 4 {
-		return errors.New("Invalid data packet")
-	}
-
 	buf := bytes.NewBuffer(data)
 	var code OpCode
 
@@ -490,6 +551,7 @@ func (a Ack) MarshalBinary() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 
 	return buf.Bytes(), nil
 }
