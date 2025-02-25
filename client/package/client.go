@@ -18,7 +18,7 @@ const (
 	opcodeERROR = 5
 )
 
-func SendRequest(rrq packets.Request, serverIP *string) (*net.UDPConn, error) {
+func SendReadRequest(rrq packets.Request, serverIP *string) (*net.UDPConn, error) {
 	serverAddr, err := net.ResolveUDPAddr("udp", *serverIP)
 	if err != nil {
 		fmt.Println("Invalid server address:", err)
@@ -44,30 +44,26 @@ func SendRequest(rrq packets.Request, serverIP *string) (*net.UDPConn, error) {
 		fmt.Println("Error while sending RRQ:", err)
 		return nil, err
 	}
-    return localConn, nil
+	return localConn, nil
 }
-
-
 
 type Handler struct {
-	Conn *net.UDPConn
-	req packets.Request
-	deadline time.Duration
+	Conn     *net.UDPConn
+	Req      packets.Request
+	Deadline time.Duration
 }
-
 
 func NewHandler(conn *net.UDPConn, req packets.Request, deadline time.Duration) *Handler {
 	return &Handler{
-		Conn: conn,
-		req: req,
-		deadline: deadline,
+		Conn:     conn,
+		Req:      req,
+		Deadline: deadline,
 	}
 }
 
-func (h *Handler) handleReadRequest(filename *string) error {
+func (h *Handler) HandleReadRequest(filename *string, transferSucessful chan bool) error {
 	// Open file for writing the received data
-	transferSuccessful := false
-	outputFileName := "received_" + h.req.RequestType() + *filename 
+	outputFileName := "received_" + h.Req.RequestType() + *filename
 	outputFile, err := os.Create(strings.ReplaceAll(outputFileName, "/", "_"))
 	if err != nil {
 		return err
@@ -87,13 +83,12 @@ func (h *Handler) handleReadRequest(filename *string) error {
 	}()
 	fmt.Printf("Output file created: %s\n", outputFile.Name())
 
-
 	// Variables to track the server's ephemeral address
 	var serverDataAddr *net.UDPAddr
 
 	for {
 		buffer := make([]byte, 516)
-		h.Conn.SetReadDeadline(time.Now().Add(h.deadline)) 
+		h.Conn.SetReadDeadline(time.Now().Add(h.Deadline))
 
 		n, addr, err := h.Conn.ReadFromUDP(buffer)
 		if err != nil {
@@ -135,14 +130,14 @@ func (h *Handler) handleReadRequest(filename *string) error {
 				return fmt.Errorf("Error while marshaling ACK packet: %v", err)
 			}
 
-			_, err = h.Conn.WriteTo(ackData, serverDataAddr)
+			b, err := h.Conn.WriteTo(ackData, serverDataAddr)
+			fmt.Printf("Sent ACK for block %d, sent %d\n", dataPck.BlockNumber, b)
 			if err != nil {
 				return fmt.Errorf("Error while sending ACK packet: %v", err)
 			}
 
 			if n < 516 {
-				fmt.Println("Transfer completed")
-				transferSuccessful = true
+				transferSucessful <- true
 				break
 			}
 
@@ -159,13 +154,14 @@ func (h *Handler) handleReadRequest(filename *string) error {
 			fmt.Printf("Unknown opcode %d received\n", opcode)
 		}
 
-		if transferSuccessful || opcode == opcodeERROR || err != nil {
+		if opcode == opcodeERROR || err != nil {
 			break
 		}
+
 	}
 
-	// Finalize the file based on transfer success
-	if transferSuccessful {
+	// Close file and return
+	if err != nil {
 		log.Printf("File '%s' received successfully.", outputFileName)
 		err = outputFile.Close()
 		if err != nil {
