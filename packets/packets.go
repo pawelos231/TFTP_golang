@@ -5,18 +5,21 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 )
 
 const (
-	DatagramSize = 516
-	BlockSize    = DatagramSize - 4 // datagram size minus the opcode and block number
-	NETASCII     = "netascii"
-	OCTET        = "octet"
+	DatagramSize  = 516
+	BlockSize     = DatagramSize - 4 // datagram size minus the opcode and block number
+	NETASCII      = "netascii"
+	OCTET         = "octet"
+	READ_REQUEST  = "read"
+	WRITE_REQUEST = "write"
 )
 
 type OpCode uint16
-type Compress bool 
+type Compress bool
 
 // types of packets (opcodes) that can be sent
 const (
@@ -41,9 +44,10 @@ const (
 )
 
 type Request interface {
-    RequestType() string
-    MarshalBinary() ([]byte, error)
-    MarshalNetascii() ([]byte, error)
+	RequestType() string
+	MarshalBinary() ([]byte, error)
+	MarshalNetascii() ([]byte, error)
+	String() string
 }
 
 // READ REQUEST PACKET
@@ -54,7 +58,17 @@ type ReadRequest struct {
 }
 
 func (r ReadRequest) RequestType() string {
-	return "read"
+	return READ_REQUEST
+}
+
+func (r ReadRequest) String() string {
+	var out bytes.Buffer
+	out.WriteString("ReadRequest {\n")
+	out.WriteString("\tFileName: " + r.FileName + "\n")
+	out.WriteString("\tMode: " + r.Mode + "\n")
+	out.WriteString("\tCompress: " + strconv.FormatBool(r.Compress) + "\n")
+	out.WriteString("}")
+	return out.String()
 }
 
 func (r *ReadRequest) UnmarshalBinary(data []byte) error {
@@ -62,13 +76,11 @@ func (r *ReadRequest) UnmarshalBinary(data []byte) error {
 	var code OpCode
 	var compress Compress
 
-
 	//read opcode
 	err := binary.Read(buf, binary.BigEndian, &code)
 	if err != nil {
 		return errors.New("Invalid opcode")
 	}
-
 
 	if code != PRQ {
 		return errors.New("Invalid PRQ ")
@@ -90,8 +102,6 @@ func (r *ReadRequest) UnmarshalBinary(data []byte) error {
 		return errors.New("Invalid filename")
 	}
 
-
-
 	r.Mode, err = buf.ReadString(0)
 	if err != nil {
 		return errors.New("Invalid PRQ")
@@ -101,7 +111,6 @@ func (r *ReadRequest) UnmarshalBinary(data []byte) error {
 	if r.Mode != NETASCII && r.Mode != OCTET {
 		return errors.New("Invalid mode")
 	}
-
 
 	return nil
 }
@@ -126,7 +135,6 @@ func (r ReadRequest) MarshalBinary() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
 
 	var compressByte byte
 	if compress {
@@ -154,7 +162,6 @@ func (r ReadRequest) MarshalBinary() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
 
 	return buf.Bytes(), nil
 
@@ -265,7 +272,17 @@ type WriteRequest struct {
 }
 
 func (w WriteRequest) RequestType() string {
-	return "write"
+	return WRITE_REQUEST
+}
+
+func (w WriteRequest) String() string {
+	var out bytes.Buffer
+	out.WriteString("WriteRequest {\n")
+	out.WriteString("\tFileName: " + w.FileName + "\n")
+	out.WriteString("\tMode: " + w.Mode + "\n")
+	out.WriteString("\tCompress: " + strconv.FormatBool(w.Compress) + "\n")
+	out.WriteString("}")
+	return out.String()
 }
 
 func (w *WriteRequest) UnmarshalBinary(data []byte) error {
@@ -551,7 +568,6 @@ func (a Ack) MarshalBinary() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
 
 	return buf.Bytes(), nil
 }

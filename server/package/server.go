@@ -51,53 +51,53 @@ func (s *Server) Serve(conn net.PacketConn) error {
 
 	for {
 		buf := make([]byte, 1024)
-		_, addr, err := conn.ReadFrom(buf)
+		_, client_addr, err := conn.ReadFrom(buf)
 		if err != nil {
 			return errors.New("Error reading from connection")
 		}
 
 		err = readReq.UnmarshalBinary(buf)
 		if err == nil {
-			go s.handle(readReq, addr)
+			go s.handle(readReq, client_addr)
 			continue
 		}
 		err = readReq.UnmarshalNetascii(buf)
 		if err == nil {
-			go s.handle(readReq, addr)
+			go s.handle(readReq, client_addr)
 			continue
 		}
 
 		err = writeReq.UnmarshalBinary(buf)
 		if err == nil {
-			go s.handle(writeReq, addr)
+			go s.handle(writeReq, client_addr)
 			continue
 		}
 
 		err = writeReq.UnmarshalNetascii(buf)
 		if err == nil {
-			go s.handle(writeReq, addr)
+			go s.handle(writeReq, client_addr)
 			continue
 		}
 
-		log.Printf("Invalid request: %v", err)
-		return err //returning error beacuse we do not want to continue the server if we have an invalid request
+		// log.Printf("Invalid request: %v, buffer: %s", err, buf)
+		// return err //returning error beacuse we do not want to continue the server if we have an invalid request
 	}
 }
 
-func (s *Server) handle(rrq packets.Request, addr net.Addr) {
+func (s *Server) handle(rrq packets.Request, client_addr net.Addr) {
 	switch rrq.(type) {
 	case packets.ReadRequest:
-		s.handleReadRequest(rrq.(packets.ReadRequest), addr)
+		s.handleReadRequest(rrq.(packets.ReadRequest), client_addr)
 	case packets.WriteRequest:
-		s.handleWriteRequest(rrq.(packets.WriteRequest), addr)
+		s.handleWriteRequest(rrq.(packets.WriteRequest), client_addr)
 	}
 }
 
-func (s *Server) handleReadRequest(rrq packets.ReadRequest, addr net.Addr) {
-	log.Printf("[%s] requested file: %s", addr, rrq.FileName)
+func (s *Server) handleReadRequest(rrq packets.ReadRequest, client_addr net.Addr) {
+	log.Printf("[%s] requested file: %s", client_addr, rrq.FileName)
 	//we create a new connection to the client, beacuse by creating a new connection we can send a file to the correct client
 	//and we do not need to worry about synchronization issues with the "connection" from net.ListenPacket in the Serve method
-	conn, err := net.Dial("udp", addr.String())
+	conn, err := net.Dial("udp", client_addr.String())
 	if err != nil {
 		log.Printf("Error connecting to client: %v", err)
 		return
@@ -169,41 +169,42 @@ NEXT:
 				return
 			default:
 				log.Printf("Invalid packet received: %v", buf)
-
-				if ackErr != nil {
-					log.Printf("Failed to unmarshal ACK packet: %v", ackErr)
-				}
-				if errorErr != nil {
-					log.Printf("Failed to unmarshal ERROR packet: %v", errorErr)
-				}
 			}
 
-			log.Printf("Max retries reached for: %s", addr)
+			log.Printf("Max retries reached for: %s", client_addr)
 			return
 		}
 
 	}
-	log.Printf("[%s] file sent", addr)
+	log.Printf("[%s] file sent", client_addr)
 
 }
-func (s *Server) handleWriteRequest(wrq packets.WriteRequest, addr net.Addr) {
 
-	log.Printf("[%s] adding file: %s", addr, wrq.FileName)
-	//we create a new connection to the client, beacuse by creating a new connection we can send a file to the correct client
-	//and we do not need to worry about synchronization issues with the "connection" from net.ListenPacket in the Serve method
-	listener, err := net.Listen("udp", addr.String())
+func (s *Server) handleWriteRequest(wrq packets.WriteRequest, client_addr net.Addr) {
+
+	log.Printf("[%s] adding file: %s", client_addr, wrq.FileName)
+	// we create a new connection to the client, beacuse by creating a new connection we can send a file to the correct client
+	// and we do not need to worry about synchronization issues with the "connection" from net.ListenPacket in the Serve method
+	// Bind to a local ephemeral port
+	conn, err := net.Dial("udp", client_addr.String())
 	if err != nil {
 		log.Printf("Error connecting to client: %v", err)
 		return
 	}
 
-	conn, err := listener.Accept()
+	defer func() { _ = conn.Close() }()
+
+	// Send initial packet to client
+	// This is to let the client know the new port to connect to
+	_, err = conn.Write([]byte{0})
 	if err != nil {
-		log.Printf("Error accepting connection: %v", err)
+		log.Printf("Error sending initial packet: %v", err)
 		return
 	}
 
-	defer func() { _ = listener.Close() }()
+	log.Printf("Local connection created on %s", conn.LocalAddr())
+
+	defer func() { _ = conn.Close() }()
 
 	if wrq.Compress {
 		// TODO: implement file compression
@@ -262,13 +263,8 @@ GET_NEXT:
 		switch {
 		case dataErr == nil:
 			{
-				file, err := os.OpenFile(wrq.FileName, os.O_APPEND|os.O_WRONLY, 0744)
-				if err != nil {
-					log.Printf("Error opening file: %v", err)
-					return
-				}
-				//we strip the first 4 bytes of the data packet beacuse the first 4 bytes are the opcode and block number
 				file.Write(buf[4:])
+				ackPacket.BlockNumber = dataPacket.BlockNumber
 			}
 
 		case errorErr == nil:

@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	filename = flag.String("p", "server/test.png", "Payload to fetch")
-	compress = flag.Bool("c", true, "Compress payload")
+	filename = flag.String("p", "cos.txt", "Payload to fetch / send")
+	compress = flag.Bool("c", false, "Compress payload")
 	mode     = flag.String("m", "octet", "Transfer mode")
 	serverIP = flag.String("s", "127.0.0.1:69", "Server address")
 )
@@ -28,21 +28,36 @@ func main() {
 	transferSuccessful := make(chan bool)
 
 	// Create RRQ packet
-	rrq := packets.ReadRequest{
+	// rrq := packets.ReadRequest{
+	// 	FileName: *filename,
+	// 	Mode:     *mode,
+	// 	Compress: *compress,
+	// }
+
+	// Create WRQ packet
+	wrq := packets.WriteRequest{
 		FileName: *filename,
 		Mode:     *mode,
 		Compress: *compress,
 	}
 
-	localConn, err := client.SendReadRequest(rrq, serverIP)
+	// localConn, err := client.SendRequest(rrq, serverIP)
+	// if err != nil {
+	// 	log.Fatalf("Error sending RRQ: %v", err)
+	// 	return
+	// }
+
+	localConn, serverAddr, err := client.SendRequest(wrq, serverIP)
 	if err != nil {
-		log.Fatalf("Error sending RRQ: %v", err)
+		log.Fatalf("Error sending WRQ: %v", err)
 		return
 	}
 
 	// Create handler
-	handler := client.NewHandler(localConn, rrq, 10*time.Second)
-	go handler.HandleReadRequest(filename, transferSuccessful)
+	timeout := 10 * time.Second
+	handler := client.NewHandler(localConn, serverAddr, timeout)
+	// go handler.HandleReadRequest(filename, transferSuccessful)
+	go handler.HandleWriteRequest(filename, transferSuccessful)
 
 	select {
 	case <-transferSuccessful:
