@@ -47,7 +47,7 @@ func main() {
 	// 	return
 	// }
 
-	localConn, serverAddr, err := client.SendRequest(wrq, serverIP)
+	localConn, err := client.SendRequest(wrq, serverIP)
 	if err != nil {
 		log.Fatalf("Error sending WRQ: %v", err)
 		return
@@ -55,7 +55,7 @@ func main() {
 
 	// Create handler
 	timeout := 10 * time.Second
-	handler := client.NewHandler(localConn, serverAddr, timeout)
+	handler := client.NewHandler(localConn, timeout)
 	// go handler.HandleReadRequest(filename, transferSuccessful)
 	go handler.HandleWriteRequest(filename, transferSuccessful)
 

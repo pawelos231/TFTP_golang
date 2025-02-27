@@ -335,12 +335,17 @@ func (w WriteRequest) MarshalBinary() ([]byte, error) {
 		mode = w.Mode
 	}
 
-	cap := 2 + 2 + len(w.FileName) + 1 + len(mode) + 1
+	cap := 2 + 1 + 2 + len(w.FileName) + 1 + len(mode) + 1
 	buf := new(bytes.Buffer)
 	buf.Grow(cap)
 
 	var code OpCode = WRQ
 	err := binary.Write(buf, binary.BigEndian, code)
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buf, binary.BigEndian, w.Compress)
 	if err != nil {
 		return nil, err
 	}

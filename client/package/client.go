@@ -19,25 +19,25 @@ const (
 	opcodeERROR = 5
 )
 
-func SendRequest(req packets.Request, serverIP *string) (*net.UDPConn, *net.UDPAddr, error) {
+func SendRequest(req packets.Request, serverIP *string) (*net.UDPConn, error) {
 	serverAddr, err := net.ResolveUDPAddr("udp", *serverIP)
 	if err != nil {
 		fmt.Println("Invalid server address:", err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Set up local UDP connection, any available local address
 	localConn, err := net.ListenUDP("udp", nil) // nil means any available local address
 	if err != nil {
 		fmt.Println("Failed to set up local UDP connection:", err)
-		return nil, nil, err
+		return nil, err
 	}
 	fmt.Printf("Local UDP connection set up on %s\n", localConn.LocalAddr())
 
 	reqData, err := req.MarshalBinary()
 	if err != nil {
 		fmt.Println("Error while marshaling REQ:", err)
-		return nil, nil, err
+		return nil, err
 	}
 	fmt.Printf("Sending %s request to %s\n", req.String(), serverAddr)
 
@@ -45,21 +45,19 @@ func SendRequest(req packets.Request, serverIP *string) (*net.UDPConn, *net.UDPA
 	_, err = localConn.WriteTo(reqData, serverAddr)
 	if err != nil {
 		fmt.Println("Error while sending REQ:", err)
-		return nil, nil, err
+		return nil, err
 	}
-	return localConn, serverAddr, nil
+	return localConn, nil
 }
 
 type Handler struct {
 	Conn     *net.UDPConn
-	Addr     *net.UDPAddr
 	Deadline time.Duration
 }
 
-func NewHandler(conn *net.UDPConn, addr *net.UDPAddr, deadline time.Duration) *Handler {
+func NewHandler(conn *net.UDPConn, deadline time.Duration) *Handler {
 	return &Handler{
 		Conn:     conn,
-		Addr:     addr,
 		Deadline: deadline,
 	}
 }
@@ -203,6 +201,7 @@ func (h *Handler) HandleWriteRequest(filename *string, transferSucessful chan bo
 
 NEXT:
 	for n := packets.DatagramSize; n == packets.DatagramSize; {
+		dataPacket.BlockNumber++
 		data, err := dataPacket.MarshalBinary()
 		if err != nil {
 			log.Printf("Error marshaling data packet: %v", err)
@@ -217,7 +216,6 @@ NEXT:
 				return err
 			}
 
-			// dataPacket.BlockNumber++
 			h.Conn.SetReadDeadline(time.Now().Add(h.Deadline / 10))
 
 			// we read ACK packet from server

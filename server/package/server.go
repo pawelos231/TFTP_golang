@@ -55,6 +55,7 @@ func (s *Server) Serve(conn net.PacketConn) error {
 		if err != nil {
 			return errors.New("Error reading from connection")
 		}
+		fmt.Printf("Received request from: %v", string(buf))
 
 		err = readReq.UnmarshalBinary(buf)
 		if err == nil {
@@ -219,7 +220,7 @@ func (s *Server) handleWriteRequest(wrq packets.WriteRequest, client_addr net.Ad
 
 	//create a file to write to
 	//in case of error we close and destroy the file
-	file, err := os.Create(wrq.FileName)
+	file, err := os.Create("received" + wrq.FileName)
 	if err != nil {
 		log.Printf("Error creating file: %v", err)
 		return
@@ -247,7 +248,7 @@ GET_NEXT:
 			return
 		}
 
-		_, err := conn.Read(buf)
+		n, err := conn.Read(buf)
 		if err != nil {
 			if nErr, ok := err.(net.Error); ok && nErr.Timeout() {
 				log.Printf("Timeout reading data packet: %v", err)
@@ -263,8 +264,18 @@ GET_NEXT:
 		switch {
 		case dataErr == nil:
 			{
-				file.Write(buf[4:])
+				fmt.Printf("Data packet received: %v\n", dataPacket)
+
+				dataSize := n - 4
+
+				_, err = file.Write(buf[4 : 4+dataSize])
+				if err != nil {
+					log.Printf("Error writing to file: %v", err)
+					return
+				}
+
 				ackPacket.BlockNumber = dataPacket.BlockNumber
+
 			}
 
 		case errorErr == nil:
